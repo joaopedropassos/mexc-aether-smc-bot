@@ -1,0 +1,151 @@
+per_asset:
+  # Priorizando taxa 0 (Conservative_ZeroFee para a maioria dos zero-fee)
+  BTC/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+    zero_fee: true
+  ETH/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+    zero_fee: true
+  SOL/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+    zero_fee: true
+
+  # Outros crypto - Conservative por default (poucos trades na janela de 1 semana)
+  HYPE/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  XRP/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  ZEC/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  LINK/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  PEPE/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  H/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  WLD/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  DOGE/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  SUI/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  VELVET/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  SPCXSTOCK/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  COAI/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  NEAR/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+  AVAX/USDT:USDT:
+    variation: Conservative_ZeroFee
+    risk_per_trade: 0.0025
+    atr_sl_mult: 2.5
+    atr_tp_mult: 4.0
+    max_lev: 5
+
+  # Ativos que performaram melhor com Aggressive_OB_FVG no backtest de 1 semana
+  BEAT/USDT:USDT:
+    variation: Aggressive_OB_FVG
+    risk_per_trade: 0.0075
+    atr_sl_mult: 1.8
+    atr_tp_mult: 3.0
+    max_lev: 15
+    zero_fee: false
+  ENA/USDT:USDT:
+    variation: Aggressive_OB_FVG
+    risk_per_trade: 0.0075
+    atr_sl_mult: 1.8
+    atr_tp_mult: 3.0
+    max_lev: 15
+    zero_fee: false
+  TAO/USDT:USDT:
+    variation: Aggressive_OB_FVG
+    risk_per_trade: 0.0075
+    atr_sl_mult: 1.8
+    atr_tp_mult: 3.0
+    max_lev: 15
+    zero_fee: false
+  XAU/USDT:USDT:
+    variation: Aggressive_OB_FVG
+    risk_per_trade: 0.0075
+    atr_sl_mult: 1.8
+    atr_tp_mult: 3.0
+    max_lev: 15
+    zero_fee: false
+  XAUT/USDT:USDT:
+    variation: Aggressive_OB_FVG
+    risk_per_trade: 0.0075
+    atr_sl_mult: 1.8
+    atr_tp_mult: 3.0
+    max_lev: 15
+    zero_fee: false
+
+# Nota: Esses valores vêm do backtest de 1 semana (1h) com 4 variações.
+# Priorizamos taxa 0 sempre que possível (Conservative_ZeroFee para BTC/ETH/SOL etc.).
+# Para uso real, valide com backtest mais longo e paper trading.
+# O bot carrega isso automaticamente via config e aplica no RiskManager por símbolo.
