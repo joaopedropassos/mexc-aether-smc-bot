@@ -99,19 +99,23 @@ def build_dashboard() -> Layout:
 
     state = read_state()
     log_path = get_latest_log_file()
-    log_lines = tail_log(log_path, 30)
+    log_lines = tail_log(log_path, 100)  # more lines to capture detailed [SYM] CLOSE= logs for all symbols
     recent = parse_recent_activity(log_lines)
 
-    # Try structured status first (written by bot for dashboard)
+    # Try structured status first (written by bot for dashboard) - now with real symbols_data for values
     symbols = []
     last_update = "N/A"
+    symbols_data = {}
     try:
         if os.path.exists("state/dashboard_status.json"):
             with open("state/dashboard_status.json", "r", encoding="utf-8") as f:
                 dstatus = json.load(f)
                 symbols = dstatus.get("top_symbols", [])
+                symbols_data = dstatus.get("symbols_data", {})
                 last_update = dstatus.get("timestamp", "N/A")
+                is_real = not dstatus.get("dry_run", True)
     except Exception:
+        is_real = False
         pass
 
     # Fallback to parsing the log
@@ -162,14 +166,15 @@ def build_dashboard() -> Layout:
                 if f"Analyzing {sym}" in l:
                     last_anal = l[:19]
                     break
-            d = symbol_details.get(sym, {})
-            close = d.get("CLOSE", "-")
-            atrp = d.get("ATR%", "-")
-            score = d.get("SCORE", "-")
-            bias = d.get("BIAS", "-")
-            obfvg = f"{d.get('OB', '?')}/{d.get('FVG', '?')}"
-            ut = d.get("UT", "-")
-            action = d.get("ACTION", "hold")
+            # Prefer symbols_data from status (real values from bot dump)
+            d = symbols_data.get(sym, symbol_details.get(sym, {}))
+            close = d.get("CLOSE", d.get("close", "-"))
+            atrp = d.get("ATR%", d.get("atr_pct", "-"))
+            score = d.get("SCORE", d.get("score", "-"))
+            bias = d.get("BIAS", d.get("bias", "-"))
+            obfvg = d.get("OB/FVG", d.get("ob_fvg", f"{d.get('OB', '?')}/{d.get('FVG', '?')}"))
+            ut = d.get("UT", d.get("ut", "-"))
+            action = d.get("ACTION", d.get("action", "hold"))
             status = "Em observação"
             for l in reversed(log_lines[-30:]):
                 low = l.lower()
@@ -184,13 +189,18 @@ def build_dashboard() -> Layout:
 
     layout["main"].update(Panel(table, title="Análise por Par", border_style="blue"))
 
-    # Risk Panel
+    # Risk Panel - now shows REAL if not dry_run
     open_pos = state.get("open_positions", [])
+    is_dry = state.get("dry_run", True)
     risk_text = Text()
-    risk_text.append(f"Posições abertas (simuladas): {len(open_pos)}\n", style="bold")
+    risk_text.append(f"Posições abertas: {len(open_pos)}\n", style="bold")
     risk_text.append(f"Último update: {state.get('timestamp', 'N/A')}\n", style="dim")
     risk_text.append("Status de Risco: ", style="bold")
-    risk_text.append("OK (DRY-RUN)" if state else "Aguardando...", style="green")
+    mode_str = "OK (DRY-RUN / PAPER)" if is_dry else "OK (REAL TRADER - LIVE)"
+    mode_style = "green" if is_dry else "red"
+    risk_text.append(mode_str, style=mode_style)
+    if open_pos:
+        risk_text.append(f"\nOpen: {', '.join(open_pos)}")
     risk_text.append("\n\nLembrete: Risco por trade configurado em 0.5% | Limite diário 3%")
 
     layout["risk"].update(Panel(risk_text, title="Gestão de Risco", border_style="green"))

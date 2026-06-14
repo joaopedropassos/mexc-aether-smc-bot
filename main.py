@@ -26,6 +26,7 @@ from bot.ut_bot import UTBot
 from bot.hull_filter import HullFilter
 from bot.executor import Executor
 from bot.x_sentiment import XSentimentAnalyzer
+from bot.signal_engine import SignalEngine
 
 
 class AetherBot:
@@ -95,6 +96,32 @@ class AetherBot:
         except Exception as e:
             self.logger.error(f"Failed to save state: {e}")
 
+    def _sync_real_positions(self):
+        """When in real mode, query the exchange for actual open positions and sync to risk state.
+        This way the panel and bot detect manual or previous real positions.
+        """
+        if self.cfg.dry_run:
+            return
+        try:
+            # MEXC futures via CCXT
+            positions = self.data.exchange.fetch_positions() or []
+            real_open = {}
+            for p in positions:
+                sym = p.get('symbol')
+                contracts = float(p.get('contracts') or p.get('info', {}).get('positionAmt', 0) or 0)
+                if sym and contracts != 0:
+                    real_open[sym] = {
+                        'side': p.get('side'),
+                        'qty': contracts,
+                        'entry': p.get('entryPrice'),
+                        'unrealizedPnl': p.get('unrealizedPnl'),
+                    }
+            self.risk.open_positions.update(real_open)
+            if real_open:
+                self.logger.info(f"Synced {len(real_open)} real open positions from MEXC exchange")
+        except Exception as e:
+            self.logger.warning(f"Could not sync real positions from exchange (check API key permissions for futures): {e}")
+
     def _compute_atr(self, df: pd.DataFrame, period: int = 14) -> pd.Series:
         high = df["high"]
         low = df["low"]
@@ -116,117 +143,72 @@ class AetherBot:
         df = df.copy()
         df["atr"] = self._compute_atr(df, self.cfg.risk.atr_period)
 
-        latest_close = float(df["close"].iloc[-1])
         latest_atr = float(df["atr"].iloc[-1]) if "atr" in df.columns else 0.0
 
-        # === Run all detectors ===
-        ob_zones = det["ob"].update(symbol, df)
-        fvgs = det["fvg"].update(symbol, df)
-        structure_event = det["structure"].update(df)
-        ut_signal = det["ut"].update(df)
-        hull_trend = det["hull"].update(df)
+        # === Usar o novo SignalEngine v2 para confluencia com tiers ===
+        engine = SignalEngine(
+            det["structure"],
+            det["ob"],
+            det["fvg"],
+            det["hull"],
+            det["ut"],
+        )
+        setup = engine.evaluate(symbol, df)
 
-        structure_bias = det["structure"].get_bias()
-        hull_bias = hull_trend
-
-        # === Confluence scoring (0.0 - 1.0+) ===
-        score = 0.0
-        reasons = []
-
-        # Order Block confluence (strongest)
-        if det["ob"].is_price_in_ob(df["close"].iloc[-1]):
-            score += 0.35
-            reasons.append("IN_OB")
-
-        # FVG
-        if det["fvg"].price_in_fvg(df["close"].iloc[-1]):
-            score += 0.20
-            reasons.append("IN_FVG")
-
-        # Market Structure
-        if structure_bias == "bullish":
-            score += 0.15
-            reasons.append("BULL_STRUCTURE")
-        elif structure_bias == "bearish":
-            score -= 0.15
-
-        # UT Bot fresh signal
-        recent_ut = det["ut"].get_recent_signal()
-        if recent_ut:
-            score += 0.25 if recent_ut.side == "long" else -0.25
-            reasons.append(f"UT_{recent_ut.side.upper()}")
-
-        # Hull trend filter (mandatory-ish)
-        if self.cfg.hull.use_as_filter:
-            if hull_bias == "bullish":
-                score += 0.15
-            elif hull_bias == "bearish":
-                score -= 0.15
-            else:
-                score *= 0.6  # penalize neutral
-
-        # X Sentiment (optional global filter)
-        if self.cfg.x_sentiment.enabled:
-            overall_sent = self.sentiment.get_overall_crypto_futures_sentiment([symbol])
-            if overall_sent > 0.1:
-                score += 0.1
-            elif overall_sent < -0.1:
-                score -= 0.1
-            reasons.append(f"SENT_{overall_sent:.2f}")
-
-        side = "long" if score > 0.55 else ("short" if score < -0.55 else None)
-        if not side:
-            # log analysis even without trade
-            ob_count = len(det["ob"].get_active_zones())
-            fvg_count = len(det["fvg"].get_unmitigated_zones())
-            ut_side = recent_ut.side if recent_ut else "none"
+        if not setup:
+            # log analysis even without trade (usar dados do df para log basico)
+            latest_close = float(df["close"].iloc[-1])
             self.logger.info(
                 f"[{symbol}] CLOSE={latest_close:.4f} ATR%={latest_atr/latest_close*100 if latest_close > 0 else 0:.2f} "
-                f"SCORE={score:.2f} BIAS={structure_bias}/{hull_bias} OB={ob_count} FVG={fvg_count} "
-                f"UT={ut_side} ACTION=hold REASONS={reasons}"
+                f"SCORE=0.00 BIAS=neutral/neutral OB=0 FVG=0 UT=none ACTION=hold REASONS=['sem confluencia tier']"
             )
             return
 
-        # DETAILED LOG FOR PANEL (with action)
-        ob_count = len(det["ob"].get_active_zones())
-        fvg_count = len(det["fvg"].get_unmitigated_zones())
-        ut_side = recent_ut.side if recent_ut else "none"
+        latest_close = setup.entry_price
+        side = setup.side
+
+        # Log detalhado do setup (para o painel)
+        ob_count = 1 if setup.ob_zone else 0
+        fvg_count = 1 if setup.fvg_zone else 0
+        ut_side = setup.ut_signal.side if setup.ut_signal else "none"
         self.logger.info(
             f"[{symbol}] CLOSE={latest_close:.4f} ATR%={latest_atr/latest_close*100 if latest_close > 0 else 0:.2f} "
-            f"SCORE={score:.2f} BIAS={structure_bias}/{hull_bias} OB={ob_count} FVG={fvg_count} "
-            f"UT={ut_side} ACTION={side} REASONS={reasons}"
+            f"SCORE={setup.confluence_score:.2f} BIAS={setup.hull_trend}/{'bullish' if side=='long' else 'bearish'} "
+            f"OB={ob_count} FVG={fvg_count} UT={ut_side} ACTION={side} TIER={setup.tier} "
+            f"REASONS=[{setup.notes}] components={setup.components}"
         )
 
-        # === Risk & Execution ===
+        # === Risk & Execution (usando components para o RiskManager v2) ===
         try:
-            latest_close = float(df["close"].iloc[-1])
-            latest_atr = float(df["atr"].iloc[-1])
-
             plan = self.risk.calculate_position_size(
                 symbol=symbol,
                 entry_price=latest_close,
                 atr=latest_atr,
                 side=side,
-                confluence_score=min(1.8, max(0.6, abs(score))),
+                confluence_components=setup.components,
                 market_info=self.data.get_contract_info(symbol),
             )
 
-            plan.reason = " | ".join(reasons) + f" | score={score:.2f}"
+            # Ajustar pelo risk_multiplier do tier (do SignalEngine)
+            plan.risk_usdt *= setup.risk_multiplier
+            plan.quantity *= setup.risk_multiplier
+            plan.notional_usdt *= setup.risk_multiplier
+            plan.reason = f"TIER_{setup.tier} | " + setup.notes + f" | score={setup.confluence_score:.2f}"
 
-            # Final safety gate
-            can, why = self.risk.can_trade()
+            # Final safety gate (v2 suporta symbol)
+            can, why = self.risk.can_trade(symbol)
             if not can:
                 self.logger.info(f"{symbol} signal blocked by risk: {why}")
                 return
 
-            # Execute (or dry-run log)
+            # Execute (real ou dry)
             market_info = self.data.get_contract_info(symbol)
             result = self.executor.place_order_from_plan(plan, market_info)
 
             if result.get("status") in ("live", "dry_run_simulated"):
                 self.risk.register_fill(symbol, side, plan.quantity, plan.entry_price)
                 self._save_state()
-                self.logger.info(f"POSITION REGISTERED: {symbol} {side} risk=${plan.risk_usdt:.2f}")
+                self.logger.info(f"POSITION REGISTERED: {symbol} {side} risk=${plan.risk_usdt:.2f} TIER={setup.tier}")
 
         except Exception as e:
             self.logger.error(f"Error processing signal for {symbol}: {e}\n{traceback.format_exc()}")
@@ -236,6 +218,8 @@ class AetherBot:
 
         while self.running:
             try:
+                self._sync_real_positions()  # detect real open positions when in live mode
+
                 if self.data.should_refresh_symbols() or not self.data.top_symbols:
                     # Use mixed top volume across crypto + stocks (ações) + commodities (comodites)
                     # Real data from exchange (crypto) + yfinance (stocks/commodities)
@@ -262,6 +246,8 @@ class AetherBot:
                         self.process_symbol(symbol, df)
                     except Exception as sym_err:
                         self.logger.error(f"Error on {symbol}: {sym_err}")
+                        # Emit a basic detailed line so the panel can show something for this symbol too
+                        self.logger.info(f"[{symbol}] CLOSE=N/A ATR%=N/A SCORE=0.00 BIAS=n/a/n/a OB=0 FVG=0 UT=none ACTION=hold REASONS=['fetch error: {sym_err}']")
                         time.sleep(3)
                         continue
 
