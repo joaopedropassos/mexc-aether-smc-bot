@@ -1,0 +1,21 @@
+# MEXC Aether SMC Futures Bot - Production Grade Requirements
+ccxt>=4.3.0
+pandas>=2.0
+numpy>=1.24
+python-dotenv>=1.0
+pyyaml>=6.0
+tenacity>=8.2   # For robust retries
+pytz>=2024.1
+# Optional for X sentiment (Twitter/X API)
+tweepy>=4.14.0
+# For better logging / performance (recommended)
+loguru>=0.7.0   # Optional, fallback to stdlib logging if not present
+
+# Dev / testing (optional)
+pytest>=8.0
+black>=24.0
+rich>=13.0   # Para o painel/dashboard em tempo real (recomendado)
+yfinance>=0.2.0   # Para ranking de volume de ações e commodities (dados reais)
+matplotlib>=3.8   # Para gráficos reais no backtest (equity curve, drawdown, trades)
+
+# Note: For X module, you may need additional access or replace with alternative sentiment source.
